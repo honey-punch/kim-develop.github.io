@@ -1,0 +1,17 @@
+{
+  "name": "kim-develop",
+  "version": "0.1.0",
+  "description": "개발자가 없어진 세상에서 개발자로 살아남기",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}

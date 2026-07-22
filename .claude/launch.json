@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kim-develop",
+      "comment": "기본 node가 v14라 vite 7이 실행되지 않는다. mise의 node 24를 직접 가리킨다.",
+      "runtimeExecutable": "/Users/cjc/.local/share/mise/shims/node",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js"],
+      "port": 5173
+    }
+  ]
+}
