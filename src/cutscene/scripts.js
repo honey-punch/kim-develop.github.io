@@ -193,6 +193,12 @@ export function endingSecret() {
 
   // 쓰러진 흑막을 둘러싸는 추종자들. 전투용 적이 아니라 그림이다.
   const gather = (stage) => {
+    // 김개발은 싸움이 끝난 자리에 그대로 서 있다. 어디서 마지막 일격을 넣었느냐에
+    // 따라 매번 다른 자리라, 무리 뒤 한가운데로 데려와 흑막 쪽을 보게 세운다.
+    stage.player.body.reset(HOME.x, HOME.y + 84);
+    faceIdle(stage.player, 'player', 'up');
+    stage.sortDepth(stage.player);
+
     if (mob.length) return;
 
     stage.boss.setVelocity(0, 0).setPosition(HOME.x, HOME.y).setDepth(HOME.y);
@@ -329,7 +335,8 @@ export function endingSecret() {
 
     // 당황한 김흑막
     {portrait: 'face-boss', who: '김흑막', text: '사...사실 나도 HTML로 프로그래밍하는법은 몰라...'},
-    {portrait: 'face-boss', who: '김흑막', text: '다른 언어로 프로그래밍하는 개발자를 없앨 수 만 있을뿐...'},
+    {portrait: 'face-boss', who: '김흑막', text: 'HTML로 프로그래밍하고 싶다고 간절히 기도했더니'},
+    {portrait: 'face-boss', who: '김흑막', text: '진짜 개발자들을 없앨 수 있는 능력이 생긴것 뿐...'},
 
     // 놀라고 광분한 추종자들.
     // boom은 그 표시를 단 컷이 이어지는 동안 글자가 남는다 — 두 대사에 걸쳐 박혀 있다.
