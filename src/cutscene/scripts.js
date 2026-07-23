@@ -80,8 +80,8 @@ export function openingOffice() {
       camera: {x: 11, y: 8, zoom: 1.6},
       hold: 1800,
     },
-    {text: '타닥타닥, 타닥타닥...', hold: 2000},
-    {who: '김개발', text: '하... 이놈의 일은 언제 끝나는거야...', hold: 2800},
+    {text: '타닥타닥, 타닥타닥...'},
+    {who: '김개발', text: '하... 이놈의 일은 언제 끝나는거야...'},
 
     // 수상한 건물에 어두운 구름이 모여들고, 그 위로 번개가 친다
     {storm: true, hold: 4400},
@@ -113,20 +113,17 @@ export function openingOffice() {
     {
       portrait: 'face-kim-shock',
       who: '김개발',
-      text: '젠장, 클라이언트들을 위해 개발중이었는데...!',
-      hold: 2800
+      text: '젠장, 클라이언트들을 위해 개발중이었는데...!'
     },
     {
       portrait: 'face-kim',
       who: '김개발',
-      text: '나 혼자 개발할 수는 없어... 모두를 되찾아야해...!',
-      hold: 2800
+      text: '나 혼자 개발할 수는 없어... 모두를 되찾아야해...!'
     },
     {
       portrait: 'face-kim',
       who: '김개발',
-      text: '일단 거리로 나가보자.',
-      hold: 2800
+      text: '일단 거리로 나가보자.'
     },
   ];
 }
