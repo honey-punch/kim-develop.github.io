@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import {TILE, DEPTH} from '../config.js';
 import {COLLEAGUES} from '../art/palette.js';
 import {faceIdle} from '../art/hero.js';
-import {vanish, appear} from '../effects.js';
+import {vanish, appear, dustPuff, sweatDrop} from '../effects.js';
+import {SECRET} from '../maps/dungeon.js';
 
 // 컷신 대본. 한 줄이 한 컷이다.
 //
@@ -113,16 +114,19 @@ export function openingOffice() {
       portrait: 'face-kim-shock',
       who: '김개발',
       text: '젠장, 클라이언트들을 위해 개발중이었는데...!',
+      hold: 2800
     },
     {
       portrait: 'face-kim',
       who: '김개발',
       text: '나 혼자 개발할 수는 없어... 모두를 되찾아야해...!',
+      hold: 2800
     },
     {
       portrait: 'face-kim',
       who: '김개발',
       text: '일단 거리로 나가보자.',
+      hold: 2800
     },
   ];
 }
@@ -174,7 +178,7 @@ export function openingStreet() {
       camera: {x: 6, y: 6, zoom: 2},
       hold: 700,
     },
-    {who: '추종자들', text: '저 녀석 명찰을 봐. 개발자야!!'},
+    {who: '추종자들', text: '방금 말하는 거 들었어? 개발자야!!'},
     {who: '추종자들', text: '나는 편하게 개발하고 싶어. HTML로 프로그래밍을 할거라구...!!!!'},
   ];
 }
@@ -186,28 +190,56 @@ export function openingStreet() {
 export function endingSecret() {
   const mob = [];
 
+  // 흑막은 싸우는 동안 방 안을 떠돈다. 어디서 쓰러졌든 엔딩의 구도는 같아야 하므로
+  // 처음 서 있던 자리로 되돌려 놓고, 나머지는 전부 이 고정 좌표를 기준으로 배치한다.
+  const HOME = {x: SECRET.boss.x * TILE + TILE / 2, y: SECRET.boss.y * TILE + TILE};
+
   // 쓰러진 흑막을 둘러싸는 추종자들. 전투용 적이 아니라 그림이다.
   const gather = (stage) => {
     if (mob.length) return;
-    const boss = stage.boss;
-    [-72, -40, 40, 72].forEach((dx, i) => {
-      const sprite = stage.add
-        .image(boss.x + dx, boss.y + (i % 2 ? 22 : 44), 'follower-up-0')
-        .setOrigin(0.5, 1)
-        .setDepth(boss.y + (i % 2 ? 22 : 44));
-      mob.push(sprite);
+
+    stage.boss.setVelocity(0, 0).setPosition(HOME.x, HOME.y).setDepth(HOME.y);
+
+    [-20, -50, 20, 50].forEach((dx, i) => {
+      const y = HOME.y + (i % 2 ? 22 : 44);
+      mob.push(
+        stage.add.image(HOME.x + dx, y, 'follower-up-0').setOrigin(0.5, 1).setDepth(y)
+      );
     });
   };
 
-  // 얻어맞는 흑막. 추종자들이 달려들며 흔들린다.
+  // 얻어맞는 흑막. 추종자들이 달려들고 발밑에서 먼지가 인다.
   const beatUp = (stage, director) => {
     mob.forEach((m, i) => {
       director.time.delayedCall(i * 120, () => {
         if (!m.active) return;
-        stage.tweens.add({targets: m, x: m.x + (m.x < stage.boss.x ? 14 : -14), duration: 140, yoyo: true, repeat: 3});
+        stage.tweens.add({targets: m, x: m.x + (m.x < HOME.x ? 14 : -14), duration: 140, yoyo: true, repeat: 3});
+        dustPuff(stage, m.x, m.y);
       });
     });
-    stage.cameras.main.shake(900, 0.004);
+
+    // 맞는 쪽에서도 먼지가 계속 피어오른다
+    [0, 380, 760, 1140].forEach((at) =>
+      director.time.delayedCall(at, () => dustPuff(stage, HOME.x, HOME.y))
+    );
+
+  };
+
+  // 말문이 막힌 추종자들. 머리 위로 땀 한 방울이 내려와 그대로 맺혀 있는다.
+  // 여러 방울을 뿌리면 흘리는 것처럼 보인다 — 한 방울이 붙어 있어야 어이없어하는 표정이 된다.
+  const sweat = (stage) => {
+    mob.forEach((m, i) => {
+      if (!m.active || m.sweat) return;
+      m.sweat = sweatDrop(stage, m.x + 13, m.y - 46, i * 160);
+    });
+  };
+
+  // 신이 자리를 뜨면 땀도 걷힌다.
+  const dryOff = () => {
+    mob.forEach((m) => {
+      m.sweat?.destroy();
+      m.sweat = null;
+    });
   };
 
   // 하늘에서 빛과 함께 내려온다.
@@ -215,26 +247,76 @@ export function endingSecret() {
   // 흑막·추종자와 뒤엉켜 그냥 덩치 큰 등장인물이 하나 더 늘어난 것처럼 보인다.
   const descend = (stage, director) => {
     if (stage.god) return;
-    const restY = stage.boss.y - 96;
+    // 무리 위로 이만큼 띄운다. 더 올리면 머리(H)가 화면 위로 잘린다.
+    const restY = HOME.y - 56;
 
+    // 비밀공간은 어둠막이 깔려 있다(DEPTH.effect-100). 신과 빛은 그 위에 얹어야
+    // 어둠에 눌리지 않고 스스로 빛나는 것으로 보인다.
+    const LIGHT = DEPTH.effect - 95;
+
+    // 빛기둥이나 후광은 두지 않는다. 빛은 몸에 박힌 주황색 글자가 낸다 —
+    // 바닥을 밝히는 막을 덧대면 그게 광원처럼 보여서 글자의 빛이 죽는다.
+
+    // 모습이 드러나며 내려온다.
+    // 도트를 촘촘히 다시 그려서 확대할 필요가 없다. 확대하면 혼자 도트가 굵어진다.
     const god = stage.add
-      .image(stage.boss.x, restY - 220, 'god')
+      .image(HOME.x, restY - 220, 'god')
       .setOrigin(0.5, 1)
-      .setScale(2)
-      .setDepth(restY) // 다른 것들처럼 y를 깊이로 쓴다 — 무리보다 뒤에 선다
+      .setDepth(LIGHT)
       .setAlpha(0);
     stage.god = god;
+    // 발밑 그림자. 바닥에 닿지 않고 떠 있다는 걸 이게 말해 준다.
+    const shade = stage.add
+      .image(HOME.x, restY + 26, 'shadow')
+      .setScale(3.4, 1.6)
+      .setAlpha(0)
+      .setDepth(LIGHT - 1);
 
-    // 천장에서 내려꽂히는 빛기둥. 그 안에서 모습이 드러난다.
-    const beam = stage.add
-      .rectangle(god.x, restY, 130, restY, 0xffd8a8, 0)
-      .setOrigin(0.5, 1)
-      .setDepth(restY - 1)
-      .setBlendMode(Phaser.BlendModes.ADD);
+    stage.tweens.add({
+      targets: god,
+      alpha: 1,
+      y: restY,
+      duration: 1600,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        // 다 내려온 뒤에는 제자리에서 둥실거린다.
+        // 떠오를수록 그림자는 옅고 넓어진다 — 그래야 위아래로 뜨는 것으로 읽힌다.
+        stage.tweens.add({
+          targets: god,
+          y: restY - 10,
+          duration: 1900,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+        stage.tweens.add({
+          targets: shade,
+          scaleX: 3.9,
+          alpha: 0.34,
+          duration: 1900,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+      },
+    });
+    stage.tweens.add({targets: shade, alpha: 0.5, duration: 1600});
 
-    stage.tweens.add({targets: beam, alpha: 0.45, duration: 700, yoyo: true, repeat: -1});
-    stage.tweens.add({targets: god, alpha: 1, y: restY, duration: 1600, ease: 'Cubic.easeOut'});
-    director.time.delayedCall(400, () => stage.cameras.main.shake(600, 0.003));
+    // 몸에 박힌 조명이 숨쉬듯 밝아졌다 어두워진다.
+    // 스프라이트 자체를 살짝 밝혔다 되돌리는 것이라 몸 밖으로 빛이 새지 않는다.
+    stage.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 1300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tw) => {
+        if (!god.active) return;
+        const v = 235 + Math.round(tw.getValue() * 20);
+        god.setTint(Phaser.Display.Color.GetColor(255, v, v));
+      },
+    });
   };
 
   return [
@@ -244,16 +326,18 @@ export function endingSecret() {
       camera: {x: 12, y: 9, zoom: 2.2},
       hold: 2000,
     },
+    {who: '추종자들', text: '진.짜. 개발자녀석은 정말 세군요.'},
     {who: '추종자들', text: '저희에게도 HTML로 프로그래밍할수있는 능력을 주십시오...!'},
     {who: '추종자들', text: '힘을 보태겠습니다...!'},
 
     // 당황한 김흑막
-    {portrait: 'face-boss', who: '김흑막', text: '사..사실 나도 HTML로 프로그래밍하는법은 몰라...'},
-    {portrait: 'face-boss', who: '김흑막', text: '다른언어로 프로그래밍하는 개발자를 없앨 수 만 있을뿐...'},
+    {portrait: 'face-boss', who: '김흑막', text: '사...사실 나도 HTML로 프로그래밍하는법은 몰라...'},
+    {portrait: 'face-boss', who: '김흑막', text: '다른 언어로 프로그래밍하는 개발자를 없앨 수 만 있을뿐...'},
 
-    // 놀라고 광분한 추종자들
-    {portrait: 'face-follower', who: '추종자들', text: '우릴 속였어!!!!!'},
-    {portrait: 'face-follower', who: '추종자들', text: '코노야로!!!!!!'},
+    // 놀라고 광분한 추종자들.
+    // boom은 그 표시를 단 컷이 이어지는 동안 글자가 남는다 — 두 대사에 걸쳐 박혀 있다.
+    {portrait: 'face-follower', who: '추종자들', text: '우릴 속였어!!!!!', boom: '쿠구궁'},
+    {portrait: 'face-follower', who: '추종자들', text: '코노야로!!!!!!', boom: '쿠구궁'},
 
     // 둘러싸고 두들긴다
     {
@@ -262,18 +346,34 @@ export function endingSecret() {
       hold: 2200,
     },
 
+    {
+      who: '???',
+      text: '다투지 말거라.',
+    },
+
     // 하늘에서 빛이 내려오며 HTML의 신이 강림한다.
-    // 신이 사람 두 배 크기라 줌을 빼야 발끝부터 머리까지 한 화면에 들어온다.
+    // 신이 사람 세 배 키라 줌을 빼야 발끝부터 머리까지 한 화면에 들어온다.
     {
       do: (stage, director) => descend(stage, director),
-      camera: {x: 12, y: 6, zoom: 1.5},
+      // 줌 1.6 아래로 내리면 화면 폭(1280/줌)이 방 너비(800)를 넘어 맵 바깥이 드러난다.
+      camera: {x: 12, y: 6, zoom: 1.65},
       hold: 2600,
+    },
+    {
+      who: 'HTML의 신',
+      text: '나는 HTML의 신이다.',
     },
     {
       who: 'HTML의 신',
       text: '사실은 너희처럼 개발을 쉽게하려는 녀석들에게 교훈을 주고 개발자들의 소중함을 알려주고 싶었다.',
     },
     {who: 'HTML의 신', text: 'HTML로는 프로그래밍을 못한다.'},
+    {who: 'HTML의 신', text: 'ㅂㅅ들...'},
+
+    {who: '추종자들', text: '다 들리는데요??', do: (stage) => sweat(stage)},
+
+    {who: 'HTML의 신', text: '아 괄호 깜빡했다.'},
+    {who: 'HTML의 신', text: '암튼 재밌는 구경 잘했다. 다시 모든 개발자들을 되돌려주마.', do: () => dryOff()},
 
     // 몸에서 나온 빛이 화면을 하얗게 덮는다
     {
@@ -306,6 +406,9 @@ export function endingOffice() {
       do: (stage) => {
         stage.player.body.reset(KIM_SEAT.x * TILE + TILE / 2, KIM_SEAT.y * TILE + TILE);
         faceIdle(stage.player, 'player', 'up');
+        // 깊이를 다시 매긴다. 컷신 동안은 Player.update가 돌지 않아서
+        // 옮기기 전 자리의 깊이가 그대로 남고, 그러면 책상이 김개발을 덮는다.
+        stage.sortDepth(stage.player);
       },
       camera: {x: 11, y: 8, zoom: 1.6},
       hold: 2000,

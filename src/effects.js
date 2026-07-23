@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {DEPTH, COMBAT} from './config.js';
 import {GameState} from './state.js';
+import {bake} from './art/pixel.js';
 
 // 전투에서 눈에 보이는 것들. 판정과는 아무 상관이 없다 —
 // 여기서 무엇을 그리든 맞고 안 맞고는 MapScene의 hitArea가 정한다.
@@ -361,6 +362,76 @@ export function appear(scene, target, color = 0xbfe0f0) {
       onComplete: () => bit.destroy(),
     });
   }
+}
+
+// 얻어맞을 때 발밑에서 피어오르는 먼지.
+export function dustPuff(scene, x, y) {
+  for (let i = 0; i < 7; i++) {
+    const dir = Phaser.Math.FloatBetween(-1, 1);
+    const puff = scene.add
+      .circle(x + Phaser.Math.Between(-14, 14), y - Phaser.Math.Between(0, 8), Phaser.Math.Between(3, 6), 0xb9b3a8, 0.5)
+      .setDepth(y + 1);
+
+    scene.tweens.add({
+      targets: puff,
+      x: puff.x + dir * Phaser.Math.Between(14, 30),
+      y: puff.y - Phaser.Math.Between(10, 26),
+      scale: Phaser.Math.FloatBetween(1.6, 2.4),
+      alpha: 0,
+      duration: Phaser.Math.Between(420, 760),
+      delay: i * 40,
+      ease: 'Sine.easeOut',
+      onComplete: () => puff.destroy(),
+    });
+  }
+}
+
+// 물방울 도트. 위가 뾰족하고 아래가 둥근 그 모양이다.
+// 원을 늘려 쓰면 그냥 타원이라 땀으로 안 읽혀서 따로 그린다.
+// prettier-ignore
+const DROP = [
+  '...oo...',
+  '...oo...',
+  '..oWWo..',
+  '..oWWo..',
+  '.oWWWWo.',
+  '.oWLWWo.',
+  'oWWLWWWo',
+  'oWLWWWWo',
+  'oWWWWWWo',
+  '.oWWWWo.',
+  '..oooo..',
+];
+
+const DROP_PALETTE = {
+  o: 0x4a7f9c, // 테두리
+  W: 0x9fd4e8, // 물
+  L: 0xeaf8ff, // 빛나는 부분
+};
+
+// 머리 위로 내려와 맺히는 땀방울. 말문이 막혔을 때.
+// 지우기 전까지 그대로 붙어 있으므로 돌려받은 것을 들고 있다가 없애야 한다.
+export function sweatDrop(scene, x, y, delay = 0) {
+  if (!scene.textures.exists('sweat-drop')) {
+    bake(scene, 'sweat-drop', DROP, DROP_PALETTE);
+  }
+
+  const drop = scene.add
+    .image(x, y - 40, 'sweat-drop')
+    .setDepth(DEPTH.effect)
+    .setAlpha(0);
+
+  // 위에서 스르르 내려와 살짝 튕기고 멈춘다.
+  scene.tweens.add({targets: drop, alpha: 1, duration: 200, delay});
+  scene.tweens.add({
+    targets: drop,
+    y,
+    duration: 620,
+    delay,
+    ease: 'Bounce.easeOut',
+  });
+
+  return drop;
 }
 
 // 포션. 발밑에서 알갱이가 몸을 타고 올라가고 기운이 한 번 돈다.

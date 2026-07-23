@@ -8,7 +8,9 @@ import {PANEL_SCALE} from '../art/panels.js';
 // 얼굴 컷은 이 씬이 검은 화면을 깔고 그 위에 클로즈업을 띄운다.
 // 그래서 맵을 다시 그릴 필요도, 컷마다 배경을 그릴 필요도 없다.
 
-const LETTERBOX = 72; // 위아래 검은 띠 높이
+// 위아래 검은 띠 높이. HTML의 신처럼 키 큰 인물이 들어가려면 너무 두꺼우면 안 된다.
+// 띠가 72였을 땐 신의 머리가 잘렸다.
+const LETTERBOX = 44;
 const BOX_HEIGHT = 132; // 대사 상자 높이
 
 export default class CutsceneScene extends Phaser.Scene {
@@ -23,6 +25,9 @@ export default class CutsceneScene extends Phaser.Scene {
     this.index = 0;
     this.waitingForKey = false;
     this.finished = false;
+    this.booming = null;
+    this.boomStamps = [];
+    this.boomScale = 7; // makePixelText에 넘긴 배율과 같아야 제 크기로 줄어든다
   }
 
   get stage() {
@@ -55,23 +60,16 @@ export default class CutsceneScene extends Phaser.Scene {
     this.add.rectangle(0, 0, VIEW_WIDTH, LETTERBOX, 0x000000).setOrigin(0);
     this.add.rectangle(0, VIEW_HEIGHT - LETTERBOX, VIEW_WIDTH, LETTERBOX, 0x000000).setOrigin(0);
 
-    // 엔딩의 'theEnd();'와 제목처럼 화면 한가운데 크게 뜨는 글자.
-    this.title = this.add
-      .text(VIEW_WIDTH / 2, VIEW_HEIGHT / 2 - 20, '', {
-        fontFamily: 'sans-serif',
-        fontSize: '52px',
-        color: '#ffffff',
-        align: 'center',
-        wordWrap: {width: VIEW_WIDTH - 200},
-        lineSpacing: 12,
-      })
-      .setOrigin(0.5)
-      .setAlpha(0);
+    // 엔딩의 'theEnd();'와 제목이 뜨는 자리. 글자는 그때그때 도트로 구워 얹는다.
+    this.titleLayer = this.add.container(VIEW_WIDTH / 2, VIEW_HEIGHT / 2 - 20).setAlpha(0);
 
     this.buildDialogue();
 
+    // 조작 안내. Esc(건너뛰기)는 늘 되지만 Enter/Space(넘기기)는
+    // 대사를 기다리는 컷에서만 먹는다. 안 되는 동안 안내를 띄워 두면
+    // 눌러도 반응이 없어 고장 난 것처럼 보인다.
     this.skipHint = this.add
-      .text(VIEW_WIDTH - 24, VIEW_HEIGHT - 26, 'Enter/Space 넘기기   Esc 건너뛰기', {
+      .text(VIEW_WIDTH - 24, VIEW_HEIGHT - 22, '', {
         fontFamily: 'sans-serif',
         fontSize: '16px',
         color: '#7a7f8a',
@@ -87,7 +85,9 @@ export default class CutsceneScene extends Phaser.Scene {
   }
 
   buildDialogue() {
-    const top = VIEW_HEIGHT - LETTERBOX - BOX_HEIGHT + 24;
+    // 대사창 아래를 검은 띠 위에 얹는다. 띠 안쪽까지 내려가면
+    // 띠에 적어 둔 조작 안내와 겹쳐서 둘 다 못 읽는다.
+    const top = VIEW_HEIGHT - LETTERBOX - BOX_HEIGHT - 8;
 
     const boxW = VIEW_WIDTH - 200;
     const left = VIEW_WIDTH / 2 - boxW / 2;
@@ -190,6 +190,10 @@ export default class CutsceneScene extends Phaser.Scene {
     if (beat.portrait) this.portrait.setTexture(beat.portrait).setScale(beat.scale ?? 7);
     this.showTitle(beat.title);
 
+    // boom을 단 컷이 이어지는 동안 글자가 남아 있는다.
+    if (beat.boom) this.startBoom(beat.boom);
+    else this.stopBoom();
+
     if (beat.camera) this.moveCamera(beat.camera);
     beat.do?.(this.stage, this);
 
@@ -201,6 +205,10 @@ export default class CutsceneScene extends Phaser.Scene {
     if (!beat.text || beat.hold) {
       this.timer = this.time.delayedCall(beat.hold ?? 1400, () => this.play(index + 1));
     }
+
+    this.skipHint.setText(
+      this.waitingForKey ? 'Enter/Space 넘기기   Esc 건너뛰기' : 'Esc 건너뛰기'
+    );
   }
 
   showLine(beat) {
@@ -222,16 +230,102 @@ export default class CutsceneScene extends Phaser.Scene {
   }
 
   // 큰 글자는 스르르 떴다가 컷이 끝나면 스르르 사라진다.
+  //
+  // 글자를 작게 한 번 그린 뒤 그 그림을 통째로 확대한다. 큰 폰트를 바로 쓰면
+  // 곡선이 매끄럽게 나와 도트 세계에서 혼자 튄다. 작게 그려서 키우면
+  // 픽셀이 네모나게 뭉개지면서 도트로 찍은 글자처럼 보인다.
   showTitle(text) {
-    this.tweens.killTweensOf(this.title);
+    this.tweens.killTweensOf(this.titleLayer);
+    this.titleLayer.removeAll(true);
 
     if (!text) {
-      this.title.setAlpha(0).setText('');
+      this.titleLayer.setAlpha(0);
       return;
     }
 
-    this.title.setText(text).setAlpha(0);
-    this.tweens.add({targets: this.title, alpha: 1, duration: 900, ease: 'Sine.easeInOut'});
+    // 작게 그릴수록 도트가 굵어진다. 11px보다 더 줄이면 한글 획이 뭉개져 못 읽는다.
+    const stamp = this.makePixelText(text, {color: '#ffd479', stroke: '#2a1f10'});
+    this.titleLayer.add(stamp);
+    this.titleLayer.setAlpha(0);
+    this.tweens.add({targets: this.titleLayer, alpha: 1, duration: 900, ease: 'Sine.easeInOut'});
+  }
+
+  // 글자를 작게 한 번 그린 뒤 그 그림을 통째로 확대한다. 큰 폰트를 바로 쓰면
+  // 곡선이 매끄럽게 나와 도트 세계에서 혼자 튄다. 작게 그려서 키우면
+  // 픽셀이 네모나게 뭉개지면서 도트로 찍은 글자처럼 보인다.
+  // 11px보다 더 줄이면 한글 획이 뭉개져 못 읽는다.
+  makePixelText(text, {color = '#ffffff', stroke = '#141821', size = 11, scale = 6} = {}) {
+    const draft = this.make
+      .text(
+        {
+          text,
+          style: {
+            fontFamily: 'sans-serif',
+            fontSize: `${size}px`,
+            color,
+            align: 'center',
+            lineSpacing: 3,
+            stroke,
+            strokeThickness: 2,
+          },
+        },
+        false
+      )
+      .setOrigin(0.5);
+
+    const stamp = this.add
+      .renderTexture(0, 0, Math.ceil(draft.width), Math.ceil(draft.height))
+      .setOrigin(0.5)
+      .setScale(scale);
+    stamp.draw(draft, draft.width / 2, draft.height / 2);
+    // 확대할 때 픽셀을 뭉개지 않고 네모나게 키운다.
+    stamp.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    draft.destroy();
+
+    return stamp;
+  }
+
+  // 충격. '쿠구궁' 같은 글자가 한 자씩 화면에 내리꽂힌다.
+  // 카메라는 흔들지 않는다 — 얼굴 컷이 같이 흔들리면 표정을 읽을 수 없다.
+  // boom을 단 컷이 이어지는 동안은 글자가 그대로 남는다.
+  startBoom(text) {
+    if (this.booming === text) return;
+    this.stopBoom();
+    this.booming = text;
+
+    // 얼굴을 가리지 않게 위쪽에 널찍이 벌려 놓는다.
+    // 가운데에 겹쳐 찍으면 정작 봐야 할 표정이 안 보인다.
+    const chars = [...text];
+    const gap = 260;
+    const left = VIEW_WIDTH / 2 - ((chars.length - 1) * gap) / 2;
+
+    chars.forEach((ch, i) => {
+      const stamp = this.makePixelText(ch, {color: '#ff5a6e', stroke: '#2a0d12', size: 13, scale: 7})
+        .setPosition(left + i * gap, LETTERBOX + 62)
+        .setAngle(Phaser.Math.Between(-9, 9))
+        .setAlpha(0)
+        .setScale(this.boomScale * 3);
+      this.boomStamps.push(stamp);
+
+      // 위에서 쿵 하고 박힌다. 커진 채로 나타나 제 크기로 줄어든다.
+      this.time.delayedCall(i * 260, () => {
+        if (!stamp.active) return;
+        stamp.setAlpha(1);
+        this.tweens.add({
+          targets: stamp,
+          scale: this.boomScale,
+          duration: 180,
+          ease: 'Back.easeOut',
+        });
+      });
+    });
+  }
+
+  stopBoom() {
+    if (!this.booming) return;
+    this.booming = null;
+    this.boomStamps.forEach((s) => s.destroy());
+    this.boomStamps.length = 0;
   }
 
   // 화면을 하얗게 덮는다. HTML의 신에게서 퍼지는 빛.
@@ -376,6 +470,7 @@ export default class CutsceneScene extends Phaser.Scene {
   finish() {
     if (this.finished) return;
     this.finished = true;
+    this.stopBoom();
     this.onDone?.(this.stage);
     this.scene.stop();
   }
